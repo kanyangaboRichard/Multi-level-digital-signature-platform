@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
@@ -6,17 +6,19 @@ import { toast } from 'react-hot-toast';
 import { User, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function Settings() {
-  const { user } = useOutletContext();
-  const [name, setName] = useState('');
+  const { user } = useOutletContext() || {};
+  const [name, setName] = useState(user?.name || '');
+  // Fill the name field once the user loads (or their name changes), without an effect.
+  const [syncedName, setSyncedName] = useState(user?.name);
+  if (user?.name && user.name !== syncedName) {
+    setSyncedName(user.name);
+    setName(user.name);
+  }
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
-
-  useEffect(() => {
-    if (user?.name) setName(user.name);
-  }, [user]);
 
   const hasPassword = user?.authProvider === 'local' || !user?.authProvider;
 

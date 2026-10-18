@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAsyncLock } from "../../hooks/useAsyncLock";
 import api from "../../lib/api";
 import toast from "react-hot-toast";
@@ -8,8 +8,6 @@ import {
   Lock,
   ShieldCheck,
   Trash2,
-  X,
-  Plus,
   CheckCircle2,
   AlertTriangle,
   Loader2,
@@ -17,7 +15,6 @@ import {
   RotateCcw,
   Sparkles,
   FileSignature,
-  Eye,
   Eraser,
 } from "lucide-react";
 import ReactCrop from "react-image-crop";
@@ -28,9 +25,10 @@ const PinInputBox = ({ pin, setPin }) => {
   const inputs = useRef([]);
   const [pinArray, setPinArray] = useState(Array(4).fill(""));
 
-  useEffect(() => {
-    if (!pin) setPinArray(Array(4).fill(""));
-  }, [pin]);
+  // Clear the boxes when the parent resets the pin (adjusted during render, not in an effect).
+  if (!pin && pinArray.some(Boolean)) {
+    setPinArray(Array(4).fill(""));
+  }
 
   const updatePin = (newArray) => {
     setPinArray(newArray);
@@ -75,7 +73,7 @@ const PinInputBox = ({ pin, setPin }) => {
       .replace(/\D/g, "")
       .slice(0, 4);
     if (pasted) {
-      setPin(pasted);
+      updatePin(Array.from({ length: 4 }, (_, i) => pasted[i] || ""));
       const nextIndex = pasted.length < 4 ? pasted.length : 3;
       inputs.current[nextIndex]?.focus();
     }
@@ -138,8 +136,8 @@ export default function Signatures() {
   const [uploadPin, setUploadPin] = useState("");
 
   // 1. Load User Profile and Signatures
+  // isLoading starts as true; callers that refetch later set it before calling.
   const fetchSignatures = async () => {
-    setIsLoading(true);
     try {
       const [userRes, sigsRes] = await Promise.all([
         api.get("/api/auth/me"),
@@ -163,7 +161,11 @@ export default function Signatures() {
   };
 
   useEffect(() => {
-    fetchSignatures();
+    const loadInitialData = async () => {
+      setIsLoading(true);
+      await fetchSignatures();
+    };
+    loadInitialData();
   }, []);
 
   // Responsive sizing for drawing canvas
@@ -362,6 +364,7 @@ export default function Signatures() {
       setHasPin(true);
 
       // Refresh list & switch to saved tab
+      setIsLoading(true);
       await fetchSignatures();
       setActiveTab("saved");
     } catch (err) {
@@ -406,6 +409,7 @@ export default function Signatures() {
       setHasPin(true);
 
       // Refresh list & switch to saved tab
+      setIsLoading(true);
       await fetchSignatures();
       setActiveTab("saved");
     } catch (err) {

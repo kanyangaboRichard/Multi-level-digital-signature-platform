@@ -30,9 +30,10 @@ const PinInputBox = ({ pin, setPin }) => {
   const inputs = useRef([]);
   const [pinArray, setPinArray] = useState(Array(4).fill(""));
 
-  useEffect(() => {
-    if (!pin) setPinArray(Array(4).fill(""));
-  }, [pin]);
+  // Clear the boxes when the parent resets the pin (adjusted during render, not in an effect).
+  if (!pin && pinArray.some(Boolean)) {
+    setPinArray(Array(4).fill(""));
+  }
 
   const updatePin = (newArray) => {
     setPinArray(newArray);
@@ -77,9 +78,9 @@ const PinInputBox = ({ pin, setPin }) => {
       .replace(/\D/g, "")
       .slice(0, 4);
     if (pasted) {
-      setPin(pasted);
+      updatePin(Array.from({ length: 4 }, (_, i) => pasted[i] || ""));
       const nextIndex = pasted.length < 4 ? pasted.length : 3;
-      inputs.current[nextIndex].focus();
+      inputs.current[nextIndex]?.focus();
     }
   };
 
@@ -215,7 +216,7 @@ export default function Sign() {
     };
 
     if (token) fetchSigningData();
-  }, [token, navigate]);
+  }, [token, urlOtp, navigate]);
 
   const onDocumentLoadSuccess = ({ numPages }) => {
     setTotalPages(numPages);
@@ -312,7 +313,7 @@ export default function Sign() {
       if (!completedFields[field.id]) {
         let init = "";
         if (signerInfo?.name) {
-          const parts = signerInfo.name.split(" ");
+          const parts = signerInfo.name.trim().split(/\s+/);
           if (parts.length >= 2) {
             init = (parts[0][0] + parts[1][0]).toUpperCase();
           } else {
@@ -370,6 +371,7 @@ export default function Sign() {
       setIsResettingPin(true);
       toast.success("Check your email for the reset code.");
     } catch (error) {
+      console.error("Failed to request PIN reset:", error);
       toast.error("Failed to request reset.");
     } finally {
       setIsRequestingReset(false);
@@ -1200,7 +1202,9 @@ export default function Sign() {
                                 `/api/signatures/security-status?email=${signerInfo.email}`,
                               );
                               setHasExistingPin(res.data.hasPin);
-                            } catch (error) {}
+                            } catch (error) {
+                              console.error("Failed to check vault security status:", error);
+                            }
                             setIsCheckingSecurity(false);
                           } else {
                             setVaultPin("");
@@ -1423,7 +1427,9 @@ export default function Sign() {
                                   `/api/signatures/security-status?email=${signerInfo.email}`,
                                 );
                                 setHasExistingPin(res.data.hasPin);
-                              } catch (error) {}
+                              } catch (error) {
+                              console.error("Failed to check vault security status:", error);
+                            }
                               setIsCheckingSecurity(false);
                             } else {
                               setVaultPin("");
@@ -1586,7 +1592,8 @@ export default function Sign() {
                                 setIsVaultUnlocked(true);
                                 toast.success("Vault unlocked.");
                               } catch (err) {
-                                toast.error("Incorrect PIN");
+                                console.error("Failed to unlock vault:", err);
+                                toast.error(err.response?.data?.error || "Incorrect PIN");
                               } finally {
                                 setIsUnlocking(false);
                               }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import  { useEffect, useRef } from 'react';
 import { FolderInput, Edit2, Share2, Trash2, Eye, ArrowRight, RotateCcw } from 'lucide-react';
 
 export default function ContextMenu({ x, y, item, onClose, onAction, activeTab }) {

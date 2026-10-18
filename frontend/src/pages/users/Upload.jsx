@@ -3,10 +3,9 @@ import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import {
-  UploadCloud, FileSignature, Plus, Trash2,
-  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check, Stamp, Copy, Loader2, Folder
-} from 'lucide-react';
+import {UploadCloud, FileSignature, Plus, Trash2,ArrowRight, PenTool, Calendar, 
+Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, 
+Pencil, Check, Stamp, Copy, Loader2, Folder} from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -192,10 +191,11 @@ function FolderBrowserModal({ folders, onClose, onSelect }) {
   const breadcrumbs = getBreadcrumbs();
   const currentFolderName = breadcrumbs[breadcrumbs.length - 1].name;
 
-  // Sync selectedId when currentFolderId changes to allow saving in the current folder quickly
-  useEffect(() => {
-    setSelectedId(currentFolderId);
-  }, [currentFolderId]);
+  // Opening a folder also selects it, so "Save Here" saves into the folder you're viewing.
+  const openFolder = (id) => {
+    setCurrentFolderId(id);
+    setSelectedId(id);
+  };
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/50 flex items-center justify-center p-4" onClick={onClose}>
@@ -217,7 +217,7 @@ function FolderBrowserModal({ folders, onClose, onSelect }) {
               <div key={crumb.id || 'root'} className="flex items-center gap-2">
                 {idx > 0 && <ChevronRight className="h-4 w-4 text-slate-400" />}
                 <button
-                  onClick={() => setCurrentFolderId(crumb.id)}
+                  onClick={() => openFolder(crumb.id)}
                   className={`hover:text-blue-600 transition-colors ${idx === breadcrumbs.length - 1 ? 'text-slate-900' : 'text-slate-500'}`}
                 >
                   {crumb.name}
@@ -239,7 +239,7 @@ function FolderBrowserModal({ folders, onClose, onSelect }) {
               {currentFolders.map(folder => (
                 <button
                   key={folder.id}
-                  onClick={() => setCurrentFolderId(folder.id)}
+                  onClick={() => openFolder(folder.id)}
                   className="flex items-center gap-3 p-3 text-left border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-sm hover:bg-blue-50/30 transition-all group"
                 >
                   <Folder className="h-6 w-6 text-slate-400 group-hover:text-blue-500 transition-colors flex-shrink-0" />
@@ -280,7 +280,6 @@ function FolderBrowserModal({ folders, onClose, onSelect }) {
 
 export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
-  const [isLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editDocumentId = searchParams.get('edit');
@@ -348,11 +347,10 @@ export default function Upload() {
     fetchInitialData();
   }, []);
 
-  useEffect(() => {
-    if (uploadMode === 'template' && !templatesFetched) {
-      fetchTemplates();
-    }
-  }, [uploadMode, templatesFetched, fetchTemplates]);
+  const switchToTemplateMode = () => {
+    setUploadMode('template');
+    if (!templatesFetched && !isTemplatesLoading) fetchTemplates();
+  };
 
   // Signer Hierarchy State
   const [isInitiatorFirst, setIsInitiatorFirst] = useState(false);
@@ -1039,7 +1037,7 @@ export default function Upload() {
               </button>
               <button
                 type="button"
-                onClick={() => setUploadMode('template')}
+                onClick={switchToTemplateMode}
                 className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${uploadMode === 'template' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <LayoutTemplate className="h-3.5 w-3.5" /> Use Template

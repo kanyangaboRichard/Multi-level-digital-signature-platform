@@ -62,7 +62,7 @@ export default function Review() {
   const isResume = searchParams.get('mode') === 'resume';
   const isFromAdmin = searchParams.get('from') === 'admin';
 
-  const { setDynamicTitle } = useOutletContext();
+  const { setDynamicTitle } = useOutletContext() || {};
 
   const [fileUrl, setFileUrl] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -91,8 +91,9 @@ export default function Review() {
           api.get(isTemplate ? `/api/templates/${id}/download` : `/api/documents/${id}/download`)
         ]);
 
-        const document = docRes.data.document;
-        
+        const document = docRes.data.document || docRes.data.template;
+        if (!document) throw new Error('Could not load this file.');
+
         if (!isTemplate) {
           if (!isPreview && !isResume && document.status !== 'pending_review') {
             toast.error("This document is not awaiting review.", { id: 'status-error' });
@@ -111,8 +112,8 @@ export default function Review() {
         setFileName(downloadRes.data.fileName);
 
         // Update the dynamic title in the header
-        setDynamicTitle(
-          isTemplate 
+        setDynamicTitle?.(
+          isTemplate
             ? `Preview: ${downloadRes.data.fileName}` 
             : (isPreview || isResume ? `Viewing: ${downloadRes.data.fileName}` : `Reviewing: ${downloadRes.data.fileName}`)
         );
@@ -148,14 +149,14 @@ export default function Review() {
           setPendingFields(fields);
         }
       } catch (err) {
-        toast.error(err.response?.data?.error || 'Could not load this file.');
+        toast.error(err.response?.data?.error || err.message || 'Could not load this file.');
         navigate('/documents');
       } finally {
         setIsLoading(false);
       }
     };
     loadReviewFile();
-  }, [id, navigate, isPreview, isResume, isTemplate]);
+  }, [id, navigate, isPreview, isResume, isTemplate, setDynamicTitle]);
 
   // Responsive scale & height logic
   useEffect(() => {
@@ -259,9 +260,11 @@ export default function Review() {
     try {
       const res = await api.post(`/api/templates/${id}/use`);
       toast.success(`Started from template.`);
-      navigate(`/upload?edit=${res.data.document.id}`);
+      const newDocId = res.data.document?.id;
+      if (!newDocId) throw new Error('Could not start a document from this template.');
+      navigate(`/upload?edit=${newDocId}`);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not start a document from this template.');
+      toast.error(err.response?.data?.error || err.message || 'Could not start a document from this template.');
     }
   });
 
@@ -304,6 +307,7 @@ export default function Review() {
                 window.document.body.removeChild(link);
                 window.URL.revokeObjectURL(objectUrl);
               } catch (err) {
+                console.error(err);
                 toast.error('Could not download file directly.');
                 window.open(fileUrl, '_blank', 'noopener,noreferrer');
               } finally {

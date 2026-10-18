@@ -115,7 +115,7 @@ function TrashTableRow({ item, isChecked, onCheck, onRestore, onPurge, isRestori
 
 export default function Trash() {
   const [trashItems, setTrashItems] = useState([]);
-  const [isTrashLoading, setIsTrashLoading] = useState(false);
+  const [isTrashLoading, setIsTrashLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [checkedIds, setCheckedIds] = useState(new Set());
 
@@ -125,11 +125,19 @@ export default function Trash() {
   const [bulkActionModal, setBulkActionModal] = useState(null); // { type: 'restore' | 'purge' }
 
   const [contextMenu, setContextMenu] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  // The page is stored with the search it belongs to, so a new search falls back to page 1.
+  const [pageState, setPageState] = useState({ query: searchQuery, page: 1 });
+  const requestedPage = pageState.query === searchQuery ? pageState.page : 1;
+  const setCurrentPage = (update) => {
+    setPageState((prev) => {
+      const base = prev.query === searchQuery ? prev.page : 1;
+      return { query: searchQuery, page: typeof update === 'function' ? update(base) : update };
+    });
+  };
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // isTrashLoading starts as true; callers that refetch later set it before calling.
   const fetchTrash = useCallback(async () => {
-    setIsTrashLoading(true);
     try {
       const res = await api.get('/api/trash');
       setTrashItems(res.data.items || []);
@@ -142,12 +150,20 @@ export default function Trash() {
   }, []);
 
   useEffect(() => {
-    fetchTrash();
+    const loadInitialData = async () => {
+      await fetchTrash();
+    };
+    loadInitialData();
   }, [fetchTrash]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
+  const uncheck = (id) => {
+    setCheckedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
 
   const [handleConfirmRestore, isRestoring] = useAsyncLock(async () => {
     if (!itemToRestore) return;
@@ -158,6 +174,7 @@ export default function Trash() {
       });
       toast.success(`${itemToRestore.type === 'folder' ? 'Folder' : itemToRestore.type === 'template' ? 'Template' : 'Document'} restored from Trash`);
       setTrashItems(prev => prev.filter(i => i.id !== itemToRestore.id));
+      uncheck(itemToRestore.id);
       setItemToRestore(null);
     } catch (error) {
       console.error('Error restoring:', error);
@@ -176,6 +193,7 @@ export default function Trash() {
       });
       toast.success('Permanently deleted');
       setTrashItems(prev => prev.filter(i => i.id !== itemToPurge.id));
+      uncheck(itemToPurge.id);
       setItemToPurge(null);
     } catch (error) {
       console.error('Error purging item:', error);
@@ -188,6 +206,7 @@ export default function Trash() {
       await api.delete('/api/trash/empty');
       toast.success('Trash emptied');
       setTrashItems([]);
+      setCheckedIds(new Set());
       setIsEmptyTrashOpen(false);
     } catch (error) {
       console.error('Error emptying trash:', error);
@@ -205,6 +224,7 @@ export default function Trash() {
       toast.success(`${selected.length} items restored from Trash`);
       setCheckedIds(new Set());
       setBulkActionModal(null);
+      setIsTrashLoading(true);
       fetchTrash();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to restore selected items');
@@ -223,6 +243,7 @@ export default function Trash() {
       toast.success(`${selected.length} items permanently deleted`);
       setCheckedIds(new Set());
       setBulkActionModal(null);
+      setIsTrashLoading(true);
       fetchTrash();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to permanently delete items');
@@ -231,17 +252,20 @@ export default function Trash() {
 
   const filteredTrash = useMemo(() => {
     return trashItems.filter((item) => {
-      if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (searchQuery && !(item.name || '').toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     });
   }, [trashItems, searchQuery]);
+
+  const totalPages = Math.ceil(filteredTrash.length / itemsPerPage);
+
+  // Clamp so restoring/deleting the last items on a page doesn't leave an empty page.
+  const currentPage = Math.min(requestedPage, Math.max(totalPages, 1));
 
   const paginatedTrash = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredTrash.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredTrash, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(filteredTrash.length / itemsPerPage);
 
   const toggleCheck = (id) => {
     setCheckedIds((prev) => {
