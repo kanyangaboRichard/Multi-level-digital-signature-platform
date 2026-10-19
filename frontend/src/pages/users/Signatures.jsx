@@ -432,7 +432,6 @@ export default function Signatures() {
               Digital Credentials
             </p>
             <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2.5">
-              <FileSignature className="h-7 w-7 text-slate-900" />
               Signatures & Vault
             </h1>
             <p className="text-sm text-slate-500 mt-1 max-w-xl">
