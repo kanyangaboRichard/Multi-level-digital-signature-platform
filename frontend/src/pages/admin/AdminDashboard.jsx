@@ -439,7 +439,30 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await api.get('/api/admin/users');
+        if (!cancelled) {
+          setUsers(res.data.users);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err.response?.data?.error || 'Could not load users.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filteredUsers = users.filter((u) => {

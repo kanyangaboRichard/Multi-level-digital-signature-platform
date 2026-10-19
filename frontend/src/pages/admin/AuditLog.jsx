@@ -95,7 +95,9 @@ export default function AuditLogs() {
   });
 
   const filtersRef = useRef(filters);
-  filtersRef.current = filters;
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
 
   const fetchLogs = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true); else setIsLoading(true);
@@ -116,7 +118,10 @@ export default function AuditLogs() {
 
   // Refetch whenever filters change (page, search, etc.)
   useEffect(() => {
-    fetchLogs();
+    const timeoutId = setTimeout(() => {
+      fetchLogs();
+    }, 0);
+    return () => clearTimeout(timeoutId);
   }, [filters, fetchLogs]);
 
   // Poll on an interval while auto-refresh is on, only when we're on page 1

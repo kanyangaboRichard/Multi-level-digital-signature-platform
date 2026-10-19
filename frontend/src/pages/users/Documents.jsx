@@ -8,7 +8,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import Select from '../../components/ui/Select';
-import { FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2, AlertTriangle, UploadCloud, X, Plus, Search, Eye, Bell, Download, Pencil, History, MoreVertical, Info, Loader2, LayoutGrid, List, Folder, Trash2, HomeIcon, LayoutTemplate, ArrowRight } from 'lucide-react';
+import { FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2, AlertTriangle, UploadCloud, X, Plus, Search, Eye, Bell, Download, Pencil, History, MoreVertical, Info, Loader2, Folder, Trash2, HomeIcon, LayoutTemplate } from 'lucide-react';
 
 const STATUS_META = {
   draft: { label: 'Draft', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' },
@@ -87,10 +87,14 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
   );
 }
 
-function VoidModal({ isOpen, title, message, isDraft, onConfirm, onCancel, isProcessing = false }) {
-  const [reason, setReason] = useState('');
-  
+function VoidModal({ isOpen, ...props }) {
+  // Mount the content only while open so the reason field starts empty each time.
   if (!isOpen) return null;
+  return <VoidModalContent {...props} />;
+}
+
+function VoidModalContent({ title, message, isDraft, onConfirm, onCancel, isProcessing = false }) {
+  const [reason, setReason] = useState('');
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={!isProcessing ? onCancel : undefined}>
@@ -207,21 +211,29 @@ function PendingOnCell({ document, currentUser }) {
 function VersionHistoryModal({ documentId, onClose, onOpenVersion }) {
   const [versions, setVersions] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const onCloseRef = useRef(onClose);
 
   useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
         const res = await api.get(`/api/documents/${documentId}/versions`);
-        setVersions(res.data.versions);
+        if (!cancelled) setVersions(res.data.versions || []);
       } catch (err) {
+        if (cancelled) return;
         toast.error(err.response?.data?.error || 'Could not load version history.');
-        onClose();
+        onCloseRef.current();
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
     load();
-  }, [documentId, onClose]);
+    return () => { cancelled = true; };
+  }, [documentId]);
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 px-4" onClick={onClose}>
@@ -389,7 +401,7 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
       icon: isDownloading ? Loader2 : Download, 
       onClick: handleDownload, 
       disabled: isDownloading,
-      spinIcon: isDownloading // we can add a custom spin class if we modify the render, but wait! Let's just use icon mapping
+      spinIcon: isDownloading
     });
   }
   items.push({ key: 'versions', label: 'Version history', icon: History, onClick: () => setIsVersionModalOpen(true) });
@@ -432,7 +444,7 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
                   item.onClick(); 
                 }}
               >
-                <item.icon className={`h-4 w-4 ${item.danger ? 'text-red-400' : 'text-slate-400'}`} />
+                <item.icon className={`h-4 w-4 ${item.spinIcon ? 'animate-spin' : ''} ${item.danger ? 'text-red-400' : 'text-slate-400'}`} />
                 {item.label}
               </button>
             ))}
@@ -797,11 +809,12 @@ function ReviewPanel({ document, onRefresh }) {
     }
   });
 
-  const signerCount = document.steps.length;
+  const steps = document.steps || [];
+  const signerCount = steps.length;
 
   return (
     <div className="mt-5">
-      <StepsTimeline documentId={document.id} isInitiator={true} steps={document.steps} documentCreatedAt={document.createdAt} onRefresh={onRefresh} />
+      <StepsTimeline documentId={document.id} isInitiator={true} steps={steps} documentCreatedAt={document.createdAt} documentUpdatedAt={document.updatedAt} onRefresh={onRefresh} />
 
       <div className="mt-5 border border-teal-200 bg-teal-50 rounded-xl p-4">
         <div className="flex items-center gap-2.5 mb-2">
@@ -859,8 +872,9 @@ function DeclineResolutionPanel({ document, onRefresh }) {
   const [isReviseModalOpen, setIsReviseModalOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
 
-  const declinedStep = document.steps.find((s) => s.status === 'declined');
-  const resumeCount = document.resumeCount;
+  const steps = document.steps || [];
+  const declinedStep = steps.find((s) => s.status === 'declined');
+  const resumeCount = document.resumeCount || 0;
   const resumeLimitReached = resumeCount >= 3;
   const declineNumber = resumeCount + 1;
 
@@ -893,7 +907,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
       {declinedStep && (
         <div className="flex gap-3 mb-5">
           <div className="h-9 w-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-            {declinedStep.signerName.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
+            {generateInitials(declinedStep.signerName)}
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -909,7 +923,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
         </div>
       )}
 
-      <StepsTimeline documentId={document.id} isInitiator={true} steps={document.steps} documentCreatedAt={document.createdAt} onRefresh={onRefresh} />
+      <StepsTimeline documentId={document.id} isInitiator={true} steps={steps} documentCreatedAt={document.createdAt} documentUpdatedAt={document.updatedAt} onRefresh={onRefresh} />
 
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-6 mb-3">
         {resumeLimitReached ? 'Choose one' : 'Choose how to proceed'}
@@ -1132,7 +1146,16 @@ export default function Documents() {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  const [activeTab, setActiveTab] = useState('all');
+  const tabParam = new URLSearchParams(location.search).get('tab');
+  const isValidTab = (key) => TABS.some((t) => t.key === key);
+  const [activeTab, setActiveTab] = useState(() => (isValidTab(tabParam) ? tabParam : 'all'));
+  // Follow ?tab= when it changes; a URL without it keeps the current tab.
+  // Adjusted during render (not in an effect) to avoid an extra render pass.
+  const [lastTabParam, setLastTabParam] = useState(tabParam);
+  if (tabParam !== lastTabParam) {
+    setLastTabParam(tabParam);
+    if (isValidTab(tabParam)) setActiveTab(tabParam);
+  }
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [checkedIds, setCheckedIds] = useState(new Set());
@@ -1146,6 +1169,431 @@ export default function Documents() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   );
+
+  const [folderState, setFolderState] = useState({
+    all: null,
+    templates: null
+  });
+  
+  const currentFolderId = activeTab === 'templates' ? folderState.templates : folderState.all;
+  
+  const setCurrentFolderId = (id) => {
+    setFolderState(prev => ({
+      ...prev,
+      [activeTab === 'templates' ? 'templates' : 'all']: id
+    }));
+  };
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [itemToRename, setItemToRename] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [itemToTrash, setItemToTrash] = useState(null);
+  const [isBulkTrashModalOpen, setIsBulkTrashModalOpen] = useState(false);
+  const [folders, setFolders] = useState([]);
+
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [selectedItemsForMove, setSelectedItemsForMove] = useState([]);
+  const [contextMenu, setContextMenu] = useState(null);
+
+  const [activeDragItem, setActiveDragItem] = useState(null);
+  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
+
+  const fetchFolders = async () => {
+    try {
+      const res = await api.get('/api/folders/all');
+      setFolders(res.data.folders || []);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load folders');
+    }
+  };
+
+  const fetchDocuments = useCallback(async () => {
+    try {
+      const res = await api.get('/api/documents');
+      const docs = res.data.documents || [];
+      setDocuments(docs);
+      return docs;
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not load your documents.');
+      return [];
+    }
+  }, []);
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await api.get('/api/templates');
+      const temps = res.data.templates || [];
+      setTemplates(temps);
+      return temps;
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not load templates.');
+      return [];
+    }
+  }, []);
+
+  const clearChecked = () => setCheckedIds(new Set());
+
+  const [handleConfirmMoveToTrash, isTrashing] = useAsyncLock(async () => {
+    if (!itemToTrash) return;
+    try {
+      await api.post('/api/trash/move', {
+        itemType: itemToTrash.type,
+        itemId: itemToTrash.id
+      });
+      toast.success(`${itemToTrash.type === 'folder' ? 'Folder' : itemToTrash.type === 'template' ? 'Template' : 'Document'} moved to Trash`);
+      const trashed = itemToTrash;
+      setItemToTrash(null);
+      if (trashed.type === 'folder') {
+        setFolders(prev => prev.filter(f => f.id !== trashed.id));
+        if (currentFolderId === trashed.id) setCurrentFolderId(null);
+      } else if (trashed.type === 'template') {
+        setTemplates(prev => prev.filter(t => t.id !== trashed.id));
+      } else {
+        setDocuments(prev => prev.filter(d => d.id !== trashed.id));
+      }
+      fetchFolders();
+      fetchDocuments();
+      fetchTemplates();
+    } catch (error) {
+      console.error('Error moving to trash:', error);
+      toast.error(error.response?.data?.error || 'Failed to move to Trash');
+    }
+  });
+
+  const handleBulkMove = () => {
+    const itemsToMove = Array.from(checkedIds).map(id => {
+      const doc = documents.find(d => d.id === id);
+      if (doc) return { id, type: 'document', name: doc.fileName };
+      const t = templates.find(t => t.id === id);
+      if (t) return { id, type: 'template', name: t.name || t.fileName };
+      const f = folders.find(f => f.id === id);
+      if (f) return { id, type: 'folder', name: f.name };
+      return null;
+    }).filter(Boolean);
+
+    if (itemsToMove.length === 0) return;
+    setSelectedItemsForMove(itemsToMove);
+    setIsMoveModalOpen(true);
+  };
+
+  const [handleConfirmBulkMoveToTrash, isBulkTrashing] = useAsyncLock(async () => {
+    if (checkedIds.size === 0) return;
+    const itemsToTrash = Array.from(checkedIds).map(id => {
+      const doc = documents.find(d => d.id === id);
+      if (doc) return { id, type: 'document' };
+      const t = templates.find(t => t.id === id);
+      if (t) return { id, type: 'template' };
+      const f = folders.find(f => f.id === id);
+      if (f) return { id, type: 'folder' };
+      return null;
+    }).filter(Boolean);
+
+    if (itemsToTrash.length === 0) return;
+
+    try {
+      await api.post('/api/trash/bulk-move', {
+        items: itemsToTrash
+      });
+      toast.success(`${itemsToTrash.length} item${itemsToTrash.length > 1 ? 's' : ''} moved to Trash`);
+      setIsBulkTrashModalOpen(false);
+      clearChecked();
+      fetchFolders();
+      fetchDocuments();
+      fetchTemplates();
+    } catch (error) {
+      console.error('Error moving items to trash:', error);
+      toast.error(error.response?.data?.error || 'Failed to move items to Trash');
+    }
+  });
+
+  const [handleRename, isSavingFolder] = useAsyncLock(async (e) => {
+    e.preventDefault();
+    if (!renameValue.trim() || !itemToRename) return;
+    try {
+      if (itemToRename.type === 'folder') {
+        const res = await api.put(`/api/folders/${itemToRename.id}/rename`, { name: renameValue });
+        const updatedFolder = res.data.folder || res.data;
+        setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
+        toast.success('Folder renamed successfully');
+      } else if (itemToRename.type === 'document') {
+        const res = await api.put(`/api/documents/${itemToRename.id}/rename`, { name: renameValue });
+        const updatedDoc = res.data.document || res.data;
+        setDocuments(prev => prev.map(d => d.id === updatedDoc.id ? { ...d, fileName: updatedDoc.fileName } : d));
+        if (detail && detail.id === updatedDoc.id) setDetail(prev => ({ ...prev, fileName: updatedDoc.fileName }));
+        toast.success('Document renamed successfully');
+      } else if (itemToRename.type === 'template') {
+        const res = await api.put(`/api/templates/${itemToRename.id}/rename`, { name: renameValue });
+        const updatedTemp = res.data.template || res.data;
+        setTemplates(prev => prev.map(t => t.id === updatedTemp.id ? { ...t, name: updatedTemp.fileName, fileName: updatedTemp.fileName } : t));
+        toast.success('Template renamed successfully');
+      }
+      
+      setItemToRename(null);
+      setRenameValue('');
+      setIsRenameModalOpen(false);
+    } catch (error) {
+      console.error('Error renaming:', error);
+      toast.error(error.response?.data?.error || 'Failed to rename item');
+    }
+  });
+
+  const [handleCreateFolder, isCreatingFolder] = useAsyncLock(async (e) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    try {
+      const res = await api.post('/api/folders', {
+        name: newFolderName,
+        parentId: currentFolderId,
+        type: activeTab === 'templates' ? 'template' : 'document'
+      });
+      
+      const newFolder = res.data.folder || res.data;
+      setFolders(prev => [...prev, newFolder]);
+      setNewFolderName('');
+      setIsCreateFolderModalOpen(false);
+      toast.success('Folder created successfully');
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      if (error.response?.data?.error === 'NO_WRITE_ACCESS') {
+        toast.error('You do not have privileges to create a folder inside this shared folder as a viewer.');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to create folder');
+      }
+    }
+  });
+
+  const handleOpenFolder = (folder) => {
+    setCurrentFolderId(folder.id);
+  };
+
+  const handleContextMenuAction = async (action, item) => {
+    if (action === 'open') {
+      if (item.type === 'folder') handleOpenFolder(item);
+      else if (item.type === 'document') handleSelect(item.id);
+    } else if (action === 'review' && item.type === 'template') {
+      navigate(`/review/${item.id}?model=Template`);
+    } else if (action === 'use' && item.type === 'template') {
+      handleUseTemplate(item);
+    } else if (action === 'rename') {
+      setItemToRename(item);
+      setRenameValue(item.type === 'folder' ? item.name : (item.type === 'template' ? item.name : item.fileName));
+      setIsRenameModalOpen(true);
+    } else if (action === 'move') {
+      setSelectedItemsForMove([item]);
+      setIsMoveModalOpen(true);
+    } else if (action === 'share' && item.type === 'folder') {
+      setShareFolderId(item.id);
+      setIsShareModalOpen(true);
+    } else if (action === 'trash' || action === 'delete') {
+      setItemToTrash(item);
+    }
+    setContextMenu(null);
+  };
+
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareFolderId, setShareFolderId] = useState(null);
+
+  // The page is stored with the filters it belongs to, so changing tab/filter/search falls back to page 1.
+  const filterKey = `${activeTab}|${statusFilter}|${searchQuery}`;
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
+  const requestedPage = pageState.key === filterKey ? pageState.page : 1;
+  const setCurrentPage = (update) => {
+    setPageState((prev) => {
+      const base = prev.key === filterKey ? prev.page : 1;
+      return { key: filterKey, page: typeof update === 'function' ? update(base) : update };
+    });
+  };
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+
+  
+  const fetchDetail = useCallback(async (id) => {
+    setIsDetailLoading(true);
+    try {
+      const res = await api.get(`/api/documents/${id}`);
+      setDetail(res.data.document);
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not load that document.');
+    } finally {
+      setIsDetailLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadInitialDocuments = async () => {
+      setIsLoading(true);
+      await Promise.all([
+        fetchDocuments(),
+        fetchTemplates(),
+        fetchFolders()
+      ]);
+      setIsLoading(false);
+    };
+    loadInitialDocuments();
+  }, [fetchDocuments, fetchTemplates]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await api.get('/api/auth/me');
+        setCurrentUser({ id: res.data.id, name: res.data.name, initials: generateInitials(res.data.name) });
+      } catch (err) {
+        console.error('Failed to fetch user in Documents', err);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const handleSelect = (id) => {
+    setSelectedId(id);
+    fetchDetail(id);
+  };
+
+  const handleCloseDetail = () => {
+    setSelectedId(null);
+    setDetail(null);
+  };
+
+  const handleRefresh = async () => {
+    await fetchDocuments();
+    await fetchTemplates();
+    if (selectedId) fetchDetail(selectedId);
+  };
+
+  const [handleUseTemplate] = useAsyncLock(async (template) => {
+    setUsingTemplateId(template.id);
+    try {
+      const res = await api.post(`/api/templates/${template.id}/use`);
+      const { document: newDoc } = res.data;
+      toast.success(`Started from "${template.name}".`);
+      navigate(`/upload?edit=${newDoc.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not start a document from this template.');
+    } finally {
+      setUsingTemplateId(null);
+    }
+  });
+
+  const [handleUploadTemplate, isUploadingTemplate] = useAsyncLock(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Only PDF files are allowed.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('pdf_file', file);
+
+    try {
+      await api.post('/api/templates/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Template uploaded successfully.');
+      await fetchTemplates();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to upload template.');
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''; 
+      }
+    }
+  });
+
+  const currentFolderDocs = useMemo(() => {
+    return documents.filter(d => {
+      const docFolderId = d.folder_id || d.folderId;
+      if (folderState.all) return docFolderId === folderState.all;
+      return !docFolderId;
+    });
+  }, [documents, folderState.all]);
+
+  const currentFolderTemplates = useMemo(() => {
+    return templates.filter(t => {
+      const tFolderId = t.folder_id || t.folderId;
+      if (folderState.templates) return tFolderId === folderState.templates;
+      return !tFolderId;
+    });
+  }, [templates, folderState.templates]);
+
+  const needsDecisionCount = useMemo(
+    () => documents.filter((d) => d.status === 'declined' || d.status === 'pending_review').length,
+    [documents]
+  );
+
+  const filteredDocuments = useMemo(() => {
+    if (activeTab === 'templates') return []; // Handled separately
+    return documents.filter((d) => {
+      if (activeTab !== 'needs_decision') {
+        const docFolderId = d.folder_id || d.folderId;
+        if (currentFolderId) {
+          if (docFolderId !== currentFolderId) return false;
+        } else {
+          if (docFolderId) return false;
+        }
+      }
+      
+      if (activeTab === 'needs_decision' && !['declined', 'pending_review'].includes(d.status)) return false;
+      if (statusFilter !== 'all' && d.status !== statusFilter) return false;
+      if (searchQuery && !(d.fileName || '').toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    });
+  }, [documents, activeTab, statusFilter, searchQuery, currentFolderId]);
+
+  const filteredTemplates = useMemo(() => {
+    if (activeTab !== 'templates') return [];
+    return templates.filter((t) => {
+      const tFolderId = t.folder_id || t.folderId;
+      if (currentFolderId) {
+        if (tFolderId !== currentFolderId) return false;
+      } else {
+        if (tFolderId) return false;
+      }
+      
+      if (searchQuery && !(t.name || '').toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    });
+  }, [templates, activeTab, searchQuery, currentFolderId]);
+
+  const totalPages = Math.ceil(
+    (activeTab === 'templates'
+      ? filteredTemplates.length
+      : filteredDocuments.length) / itemsPerPage
+  );
+
+  // Clamp so trashing the last items on a page doesn't leave an empty page.
+  const currentPage = Math.min(requestedPage, Math.max(totalPages, 1));
+
+  const paginatedDocuments = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredDocuments.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredDocuments, currentPage, itemsPerPage]);
+
+  const paginatedTemplates = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredTemplates.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredTemplates, currentPage, itemsPerPage]);
+
+  const toggleCheck = (id) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCheckAll = () => {
+    const currentList = activeTab === 'templates' ? filteredTemplates : filteredDocuments;
+    setCheckedIds((prev) =>
+      prev.size === currentList.length ? new Set() : new Set(currentList.map((d) => d.id))
+    );
+  };
+
 
   const handleDragStart = (event) => {
     const { active } = event;
@@ -1253,429 +1701,6 @@ export default function Documents() {
       }
     }
   };
-
-  
-  const [folderState, setFolderState] = useState({
-    all: null,
-    templates: null
-  });
-  
-  const currentFolderId = activeTab === 'templates' ? folderState.templates : folderState.all;
-  
-  const setCurrentFolderId = (id) => {
-    setFolderState(prev => ({
-      ...prev,
-      [activeTab === 'templates' ? 'templates' : 'all']: id
-    }));
-  };
-  const [newFolderName, setNewFolderName] = useState('');
-  const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
-  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
-  const [itemToRename, setItemToRename] = useState(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [itemToTrash, setItemToTrash] = useState(null);
-  const [isBulkTrashModalOpen, setIsBulkTrashModalOpen] = useState(false);
-  const [folders, setFolders] = useState([]);
-
-  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
-  const [selectedItemsForMove, setSelectedItemsForMove] = useState([]);
-  const [contextMenu, setContextMenu] = useState(null);
-
-  const [activeDragItem, setActiveDragItem] = useState(null);
-  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
-
-  const [handleConfirmMoveToTrash, isTrashing] = useAsyncLock(async () => {
-    if (!itemToTrash) return;
-    try {
-      await api.post('/api/trash/move', {
-        itemType: itemToTrash.type,
-        itemId: itemToTrash.id
-      });
-      toast.success(`${itemToTrash.type === 'folder' ? 'Folder' : itemToTrash.type === 'template' ? 'Template' : 'Document'} moved to Trash`);
-      const trashed = itemToTrash;
-      setItemToTrash(null);
-      if (trashed.type === 'folder') {
-        setFolders(prev => prev.filter(f => f.id !== trashed.id));
-        if (currentFolderId === trashed.id) setCurrentFolderId(null);
-      } else if (trashed.type === 'template') {
-        setTemplates(prev => prev.filter(t => t.id !== trashed.id));
-      } else {
-        setDocuments(prev => prev.filter(d => d.id !== trashed.id));
-      }
-      fetchFolders();
-      fetchDocuments();
-      fetchTemplates();
-    } catch (error) {
-      console.error('Error moving to trash:', error);
-      toast.error(error.response?.data?.error || 'Failed to move to Trash');
-    }
-  });
-
-  const handleBulkMove = () => {
-    const itemsToMove = Array.from(checkedIds).map(id => {
-      const doc = documents.find(d => d.id === id);
-      if (doc) return { id, type: 'document', name: doc.fileName };
-      const t = templates.find(t => t.id === id);
-      if (t) return { id, type: 'template', name: t.name || t.fileName };
-      const f = folders.find(f => f.id === id);
-      if (f) return { id, type: 'folder', name: f.name };
-      return null;
-    }).filter(Boolean);
-
-    if (itemsToMove.length === 0) return;
-    setSelectedItemsForMove(itemsToMove);
-    setIsMoveModalOpen(true);
-  };
-
-  const [handleConfirmBulkMoveToTrash, isBulkTrashing] = useAsyncLock(async () => {
-    if (checkedIds.size === 0) return;
-    const itemsToTrash = Array.from(checkedIds).map(id => {
-      const doc = documents.find(d => d.id === id);
-      if (doc) return { id, type: 'document' };
-      const t = templates.find(t => t.id === id);
-      if (t) return { id, type: 'template' };
-      const f = folders.find(f => f.id === id);
-      if (f) return { id, type: 'folder' };
-      return null;
-    }).filter(Boolean);
-
-    if (itemsToTrash.length === 0) return;
-
-    try {
-      await api.post('/api/trash/bulk-move', {
-        items: itemsToTrash
-      });
-      toast.success(`${itemsToTrash.length} item${itemsToTrash.length > 1 ? 's' : ''} moved to Trash`);
-      setIsBulkTrashModalOpen(false);
-      clearChecked();
-      fetchFolders();
-      fetchDocuments();
-      fetchTemplates();
-    } catch (error) {
-      console.error('Error moving items to trash:', error);
-      toast.error(error.response?.data?.error || 'Failed to move items to Trash');
-    }
-  });
-
-  const [handleRename, isSavingFolder] = useAsyncLock(async (e) => {
-    e.preventDefault();
-    if (!renameValue.trim() || !itemToRename) return;
-    try {
-      if (itemToRename.type === 'folder') {
-        const res = await api.put(`/api/folders/${itemToRename.id}/rename`, { name: renameValue });
-        const updatedFolder = res.data.folder || res.data;
-        setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
-        toast.success('Folder renamed successfully');
-      } else if (itemToRename.type === 'document') {
-        const res = await api.put(`/api/documents/${itemToRename.id}/rename`, { name: renameValue });
-        const updatedDoc = res.data.document;
-        setDocuments(prev => prev.map(d => d.id === updatedDoc.id ? { ...d, fileName: updatedDoc.fileName } : d));
-        if (detail && detail.id === updatedDoc.id) setDetail(prev => ({ ...prev, fileName: updatedDoc.fileName }));
-        toast.success('Document renamed successfully');
-      } else if (itemToRename.type === 'template') {
-        const res = await api.put(`/api/templates/${itemToRename.id}/rename`, { name: renameValue });
-        const updatedTemp = res.data.template;
-        setTemplates(prev => prev.map(t => t.id === updatedTemp.id ? { ...t, name: updatedTemp.fileName, fileName: updatedTemp.fileName } : t));
-        toast.success('Template renamed successfully');
-      }
-      
-      setItemToRename(null);
-      setRenameValue('');
-      setIsRenameModalOpen(false);
-    } catch (error) {
-      console.error('Error renaming:', error);
-      toast.error(error.response?.data?.error || 'Failed to rename item');
-    }
-  });
-
-  const [handleCreateFolder, isCreatingFolder] = useAsyncLock(async (e) => {
-    e.preventDefault();
-    if (!newFolderName.trim()) return;
-    try {
-      const res = await api.post('/api/folders', {
-        name: newFolderName,
-        parentId: currentFolderId,
-        type: activeTab === 'templates' ? 'template' : 'document'
-      });
-      
-      const newFolder = res.data.folder || res.data;
-      setFolders(prev => [...prev, newFolder]);
-      setNewFolderName('');
-      setIsCreateFolderModalOpen(false);
-      toast.success('Folder created successfully');
-    } catch (error) {
-      console.error('Error creating folder:', error);
-      if (error.response?.data?.error === 'NO_WRITE_ACCESS') {
-        toast.error('You do not have privileges to create a folder inside this shared folder as a viewer.');
-      } else {
-        toast.error(error.response?.data?.error || 'Failed to create folder');
-      }
-    }
-  });
-
-  const handleOpenFolder = (folder) => {
-    setCurrentFolderId(folder.id);
-  };
-
-  const handleContextMenuAction = async (action, item) => {
-    if (action === 'open') {
-      if (item.type === 'folder') handleOpenFolder(item);
-      else setDetail(item);
-    } else if (action === 'review' && item.type === 'template') {
-      navigate(`/review/${item.id}?model=Template`);
-    } else if (action === 'use' && item.type === 'template') {
-      handleUseTemplate(item);
-    } else if (action === 'rename') {
-      setItemToRename(item);
-      setRenameValue(item.type === 'folder' ? item.name : (item.type === 'template' ? item.name : item.fileName));
-      setIsRenameModalOpen(true);
-    } else if (action === 'move') {
-      setSelectedItemsForMove([item]);
-      setIsMoveModalOpen(true);
-    } else if (action === 'share' && item.type === 'folder') {
-      setShareFolderId(item.id);
-      setIsShareModalOpen(true);
-    } else if (action === 'trash' || action === 'delete') {
-      setItemToTrash(item);
-    }
-    setContextMenu(null);
-  };
-
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [shareFolderId, setShareFolderId] = useState(null);
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, statusFilter, searchQuery]);
-
-
-  
-  const fetchFolders = async () => {
-    try {
-      const res = await api.get('/api/folders/all');
-      setFolders(res.data.folders || []);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load folders');
-    }
-  };
-
-  const fetchDocuments = useCallback(async () => {
-    try {
-      const res = await api.get('/api/documents');
-      setDocuments(res.data.documents);
-      return res.data.documents;
-    } catch (err) {
-      console.error(err);
-      toast.error('Could not load your documents.');
-      return [];
-    }
-  }, []);
-
-  const fetchTemplates = useCallback(async () => {
-    try {
-      const res = await api.get('/api/templates');
-      setTemplates(res.data.templates || []);
-      return res.data.templates;
-    } catch (err) {
-      console.error(err);
-      toast.error('Could not load templates.');
-      return [];
-    }
-  }, []);
-
-  const fetchDetail = useCallback(async (id) => {
-    setIsDetailLoading(true);
-    try {
-      const res = await api.get(`/api/documents/${id}`);
-      setDetail(res.data.document);
-    } catch (err) {
-      console.error(err);
-      toast.error('Could not load that document.');
-    } finally {
-      setIsDetailLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const loadInitialDocuments = async () => {
-      setIsLoading(true);
-      await Promise.all([
-        fetchDocuments(),
-        fetchTemplates(),
-        fetchFolders()
-      ]);
-      setIsLoading(false);
-    };
-    loadInitialDocuments();
-  }, [fetchDocuments, fetchTemplates]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const tabParam = params.get('tab');
-    if (tabParam && ['all', 'templates', 'needs_decision'].includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }, [location.search]);
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await api.get('/api/auth/me');
-        setCurrentUser({ id: res.data.id, name: res.data.name, initials: generateInitials(res.data.name) });
-      } catch (err) {
-        console.error('Failed to fetch user in Documents', err);
-      }
-    };
-    fetchUser();
-  }, []);
-
-  const handleSelect = (id) => {
-    setSelectedId(id);
-    fetchDetail(id);
-  };
-
-  const handleCloseDetail = () => {
-    setSelectedId(null);
-    setDetail(null);
-  };
-
-  const handleRefresh = async () => {
-    await fetchDocuments();
-    await fetchTemplates();
-    if (selectedId) fetchDetail(selectedId);
-  };
-
-  const [handleUseTemplate] = useAsyncLock(async (template) => {
-    setUsingTemplateId(template.id);
-    try {
-      const res = await api.post(`/api/templates/${template.id}/use`);
-      const { document: newDoc } = res.data;
-      toast.success(`Started from "${template.name}".`);
-      navigate(`/upload?edit=${newDoc.id}`);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not start a document from this template.');
-    } finally {
-      setUsingTemplateId(null);
-    }
-  });
-
-  const [handleUploadTemplate, isUploadingTemplate] = useAsyncLock(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== 'application/pdf') {
-      toast.error('Only PDF files are allowed.');
-      return;
-    }
-    const formData = new FormData();
-    formData.append('pdf_file', file);
-
-    try {
-      await api.post('/api/templates/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success('Template uploaded successfully.');
-      await fetchTemplates();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to upload template.');
-    } finally {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''; 
-      }
-    }
-  });
-
-  const currentFolderDocs = useMemo(() => {
-    return documents.filter(d => {
-      const docFolderId = d.folder_id || d.folderId;
-      if (folderState.all) return docFolderId === folderState.all;
-      return !docFolderId;
-    });
-  }, [documents, folderState.all]);
-
-  const currentFolderTemplates = useMemo(() => {
-    return templates.filter(t => {
-      const tFolderId = t.folder_id || t.folderId;
-      if (folderState.templates) return tFolderId === folderState.templates;
-      return !tFolderId;
-    });
-  }, [templates, folderState.templates]);
-
-  const needsDecisionCount = useMemo(
-    () => documents.filter((d) => d.status === 'declined' || d.status === 'pending_review').length,
-    [documents]
-  );
-
-  const filteredDocuments = useMemo(() => {
-    if (activeTab === 'templates') return []; // Handled separately
-    return documents.filter((d) => {
-      if (activeTab !== 'needs_decision') {
-        const docFolderId = d.folder_id || d.folderId;
-        if (currentFolderId) {
-          if (docFolderId !== currentFolderId) return false;
-        } else {
-          if (docFolderId) return false;
-        }
-      }
-      
-      if (activeTab === 'needs_decision' && !['declined', 'pending_review'].includes(d.status)) return false;
-      if (statusFilter !== 'all' && d.status !== statusFilter) return false;
-      if (searchQuery && !d.fileName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      return true;
-    });
-  }, [documents, activeTab, statusFilter, searchQuery, currentUser, currentFolderId]);
-
-  const filteredTemplates = useMemo(() => {
-    if (activeTab !== 'templates') return [];
-    return templates.filter((t) => {
-      const tFolderId = t.folder_id || t.folderId;
-      if (currentFolderId) {
-        if (tFolderId !== currentFolderId) return false;
-      } else {
-        if (tFolderId) return false;
-      }
-      
-      if (searchQuery && !t.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      return true;
-    });
-  }, [templates, activeTab, searchQuery, currentFolderId]);
-
-  const paginatedDocuments = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredDocuments.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredDocuments, currentPage, itemsPerPage]);
-
-  const paginatedTemplates = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredTemplates.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredTemplates, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(
-    (activeTab === 'templates'
-      ? filteredTemplates.length
-      : filteredDocuments.length) / itemsPerPage
-  );
-
-  const toggleCheck = (id) => {
-    setCheckedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const toggleCheckAll = () => {
-    const currentList = activeTab === 'templates' ? filteredTemplates : filteredDocuments;
-    setCheckedIds((prev) =>
-      prev.size === currentList.length ? new Set() : new Set(currentList.map((d) => d.id))
-    );
-  };
-
-  const clearChecked = () => setCheckedIds(new Set());
 
   // Generate breadcrumbs
   const breadcrumbs = useMemo(() => {
@@ -2015,7 +2040,7 @@ export default function Documents() {
                       Initiated on {new Date(detail.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {detail.steps.length} signer{detail.steps.length === 1 ? '' : 's'} · sequential order
+                      {(detail.steps || []).length} signer{(detail.steps || []).length === 1 ? '' : 's'} · sequential order
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -2032,7 +2057,7 @@ export default function Documents() {
                   <ReviewPanel document={detail} onRefresh={handleRefresh} />
                 ) : (
                   <div className="mt-5">
-                    <StepsTimeline documentId={detail.id} isInitiator={currentUser?.id === detail.initiatorId} steps={detail.steps} documentCreatedAt={detail.createdAt} documentUpdatedAt={detail.updatedAt} onRefresh={handleRefresh} />
+                    <StepsTimeline documentId={detail.id} isInitiator={currentUser?.id === detail.initiatorId} steps={detail.steps || []} documentCreatedAt={detail.createdAt} documentUpdatedAt={detail.updatedAt} onRefresh={handleRefresh} />
                     {detail.status === 'completed' && (
                       <div className="flex items-center gap-2 mt-4 text-sm text-emerald-600">
                         <CheckCircle2 className="h-4 w-4" /> All signatures collected and sealed.

@@ -3,7 +3,7 @@ import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import { Mail, Lock, User, ArrowRight, Key, PenTool, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 
 // InputField with Show/Hide Password Toggle
 const InputField = ({ icon: Icon, type, name, placeholder, value, onChange, isPassword, inputRef, disabled }) => {
@@ -39,31 +39,33 @@ const InputField = ({ icon: Icon, type, name, placeholder, value, onChange, isPa
   );
 };
 
+// Requirement row used by PasswordStrength
+const Requirement = ({ met, hasInput, text }) => {
+  let colorClass = 'text-slate-500';
+  if (hasInput) {
+    colorClass = met ? 'text-green-600' : 'text-red-500';
+  }
+
+  return (
+    <div className={`flex items-center text-xs ${colorClass} transition-colors duration-300`}>
+      {met ? <CheckCircle2 className="h-3 w-3 mr-1.5" /> : <XCircle className="h-3 w-3 mr-1.5" />}
+      <span>{text}</span>
+    </div>
+  );
+};
+
 // Real-time Password Validation Component
 const PasswordStrength = ({ password }) => {
   const hasLength = password.length >= 8;
   const hasNumber = /\d/.test(password);
   const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-
-  const Requirement = ({ met, text }) => {
-    let colorClass = 'text-slate-500';
-    if (password.length > 0) {
-      colorClass = met ? 'text-green-600' : 'text-red-500';
-    }
-
-    return (
-      <div className={`flex items-center text-xs ${colorClass} transition-colors duration-300`}>
-        {met ? <CheckCircle2 className="h-3 w-3 mr-1.5" /> : <XCircle className="h-3 w-3 mr-1.5" />}
-        <span>{text}</span>
-      </div>
-    );
-  };
+  const hasInput = password.length > 0;
 
   return (
     <div className="mt-2 space-y-1.5 pl-1">
-      <Requirement met={hasLength} text="At least 8 characters" />
-      <Requirement met={hasNumber} text="Contains a number" />
-      <Requirement met={hasSpecial} text="Contains a special character" />
+      <Requirement met={hasLength} hasInput={hasInput} text="At least 8 characters" />
+      <Requirement met={hasNumber} hasInput={hasInput} text="Contains a number" />
+      <Requirement met={hasSpecial} hasInput={hasInput} text="Contains a special character" />
     </div>
   );
 };
@@ -73,11 +75,15 @@ const OTPInput = ({ value, onChange, autoFocus, disabled }) => {
   const inputs = useRef([]);
   const length = 6;
   const [otpArray, setOtpArray] = useState(Array(length).fill(''));
+  const [prevValue, setPrevValue] = useState(value);
 
   // Sync with parent if cleared
-  useEffect(() => {
-    if (!value) setOtpArray(Array(length).fill(''));
-  }, [value]);
+  if (!value && value !== prevValue) {
+    setPrevValue(value);
+    setOtpArray(Array(length).fill(''));
+  } else if (value !== prevValue) {
+    setPrevValue(value);
+  }
 
   useEffect(() => {
     if (autoFocus && inputs.current[0]) {
@@ -162,7 +168,7 @@ export default function Auth() {
     sessionStorage.setItem('authView', view);
     
     // Update browser tab title dynamically based on the current view
-    let title = 'Sign In';
+    let title;
     switch (view) {
       case 'register': title = 'Create Account'; break;
       case 'forgot': title = 'Forgot Password'; break;
@@ -174,7 +180,6 @@ export default function Auth() {
     document.title = `${title} | DSign`;
   }, [view]);
 
-  const [isLoading, setIsLoading] = useState(false);
   const [isInviteFlow, setIsInviteFlow] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -211,6 +216,7 @@ export default function Auth() {
                 await api.post('/api/auth/resend-verification', { email: emailParam });
                 toast.success('A verification code was sent to your email.');
               } catch (err) {
+                console.error(err);
                 // ignore — they can use "resend code" on the verify screen if this fails
               }
               setView('verify');

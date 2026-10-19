@@ -104,11 +104,12 @@ export default function Layout() {
       { name: 'Turnaround Audit', href: '/admin/turnaround', icon: Clock }
     ] : []),
   ];
-  // Clear dynamic title when route changes
-  useEffect(() => {
-    setDynamicTitle('');
-  }, [location.pathname]);
-
+ // Clear dynamic title when route changes
+const [prevPath, setPrevPath] = useState(location.pathname);
+if (prevPath !== location.pathname) {
+  setPrevPath(location.pathname);
+  setDynamicTitle('');
+}
   // Dynamically set the Header Title based on the current URL route
   const getPageTitle = () => {
     if (dynamicTitle) return dynamicTitle;
@@ -134,13 +135,13 @@ export default function Layout() {
     return 'Document Viewer';
   };
 
-  // Sync browser tab title
-  useEffect(() => {
-    const title = getPageTitle();
-    document.title = title ? `${title} | DSign` : 'DSign';
-  }, [dynamicTitle, location.pathname, location.search, user]);
+ const pageTitle = getPageTitle();
 
-  const NavLinks = ({ isExpanded = true }) => (
+// Sync browser tab title
+useEffect(() => {
+  document.title = pageTitle ? `${pageTitle} | DSign` : 'DSign';
+}, [pageTitle]);
+  const renderNavLinks = (isExpanded = true) => (
     <>
       {navigation.map((item) => {
         const fullPath = `${location.pathname}${location.search}`;
@@ -193,7 +194,7 @@ export default function Layout() {
         </div>
         
         <nav className={`flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden ${isSidebarExpanded ? 'px-4' : 'px-2'}`}>
-          <NavLinks isExpanded={isSidebarExpanded} />
+          {renderNavLinks(isSidebarExpanded)}
         </nav>
       </aside>
       
@@ -216,7 +217,7 @@ export default function Layout() {
             </button>
           </div>
           <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-            <NavLinks isExpanded={true} />
+            {renderNavLinks(true)}
           </nav>
         </div>
       </div>

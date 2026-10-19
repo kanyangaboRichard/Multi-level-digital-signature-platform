@@ -77,8 +77,8 @@ export default function Folder() {
   const [signedLoading, setSignedLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
 
+  // Loading flags start as true; callers that refetch later set them before calling.
   const fetchTemplates = useCallback(async () => {
-    setTemplatesLoading(true);
     try {
       const res = await api.get('/api/templates');
       setTemplates(res.data.templates || []);
@@ -90,7 +90,6 @@ export default function Folder() {
   }, []);
 
   const fetchSignedDocuments = useCallback(async () => {
-    setSignedLoading(true);
     try {
       const res = await api.get('/api/documents');
       const signed = (res.data.documents || []).filter(
@@ -105,8 +104,10 @@ export default function Folder() {
   }, []);
 
   useEffect(() => {
-    fetchTemplates();
-    fetchSignedDocuments();
+    const loadInitialData = async () => {
+      await Promise.all([fetchTemplates(), fetchSignedDocuments()]);
+    };
+    loadInitialData();
   }, [fetchTemplates, fetchSignedDocuments]);
 
   const handleUseTemplate = async (template) => {
@@ -142,13 +143,14 @@ export default function Folder() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Template uploaded successfully.');
-      fetchTemplates(); // Refresh the list
+      setTemplatesLoading(true);
+      fetchTemplates();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to upload template.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = ''; // Reset input
+        fileInputRef.current.value = ''; 
       }
     }
   };
@@ -166,12 +168,12 @@ export default function Folder() {
   };
 
   const filteredTemplates = useMemo(
-    () => templates.filter((t) => t.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    () => templates.filter((t) => (t.name || '').toLowerCase().includes(searchQuery.toLowerCase())),
     [templates, searchQuery]
   );
 
   const filteredSignedDocuments = useMemo(
-    () => signedDocuments.filter((d) => d.fileName.toLowerCase().includes(searchQuery.toLowerCase())),
+    () => signedDocuments.filter((d) => (d.fileName || '').toLowerCase().includes(searchQuery.toLowerCase())),
     [signedDocuments, searchQuery]
   );
 

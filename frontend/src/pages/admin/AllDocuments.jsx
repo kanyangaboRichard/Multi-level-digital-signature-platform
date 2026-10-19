@@ -195,17 +195,16 @@ export default function AllDocuments() {
   const [detail, setDetail] = useState(null);
   
 
+  // Reset to page 1 whenever a filter changes
+const filterKey = `${searchQuery}|${activeTab}|${sortOrder}|${statusFilter}|${dateRangeStart}|${dateRangeEnd}`;
+const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+if (filterKey !== prevFilterKey) {
+  setPrevFilterKey(filterKey);
+  setCurrentPage(1);
+}
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, activeTab, sortOrder, statusFilter, dateRangeStart, dateRangeEnd]);
-
-  useEffect(() => {
-    fetchSystemFiles();
-  }, []);
-
   const fetchSystemFiles = async () => {
     try {
-      setIsLoading(true);
       const res = await api.get('/api/admin/all-files');
       setData(res.data);
     } catch (err) {
@@ -214,6 +213,9 @@ export default function AllDocuments() {
       setIsLoading(false);
     }
   };
+  fetchSystemFiles();
+}, []);
+
 
   const [handleOpenDetail, isDetailLoading] = useAsyncLock(async (id) => {
     setSelectedId(id);

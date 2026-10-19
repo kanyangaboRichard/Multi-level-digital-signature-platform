@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Folder, Loader2, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -21,6 +21,7 @@ export default function MoveModal({ isOpen, onClose, selectedItems, currentFolde
       const res = await api.get('/api/folders/all');
       setAllFolders(res.data.folders || []);
     } catch (err) {
+      console.error(err);
       toast.error('Failed to fetch folders');
     } finally {
       setIsLoading(false);
@@ -28,13 +29,21 @@ export default function MoveModal({ isOpen, onClose, selectedItems, currentFolde
   };
 
   useEffect(() => {
-    if (isOpen) {
-      fetchFolders();
+    if (!isOpen) return;
+
+    let isActive = true;
+    Promise.resolve().then(() => {
+      if (!isActive) return;
       setCurrentViewId(null);
       setNavigationStack([null]);
       setIsCreatingFolder(false);
       setNewFolderName('');
-    }
+      fetchFolders();
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;

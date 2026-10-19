@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Clock, Users, Loader2, Search, X } from 'lucide-react';
@@ -40,19 +39,27 @@ export default function TurnaroundAudit() {
   const [ratingFilter, setRatingFilter] = useState('All');
   const [selectedSigner, setSelectedSigner] = useState(null);
 
-  const fetchAuditData = async () => {
-    try {
-      const res = await api.get('/api/admin/audit/turnaround');
-      setData(res.data);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not load turnaround audit data.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let isMounted = true;
+
+    const fetchAuditData = async () => {
+      try {
+        const res = await api.get('/api/admin/audit/turnaround');
+        if (isMounted) setData(res.data);
+      } catch (err) {
+        if (isMounted) {
+          toast.error(err.response?.data?.error || 'Could not load turnaround audit data.');
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
     fetchAuditData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const filteredSigners = data.signers.filter((s) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import  { useState } from 'react';
 import { X, Users, Shield, Plus, Loader2, Globe, Lock } from 'lucide-react';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -17,12 +17,6 @@ export default function ShareModal({ isOpen, onClose, folderId }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [searchTimeout, setSearchTimeout] = useState(null);
 
-  useEffect(() => {
-    if (isOpen && folderId) {
-      fetchAccess();
-    }
-  }, [isOpen, folderId]);
-
   const fetchAccess = async () => {
     setIsLoading(true);
     try {
@@ -31,6 +25,7 @@ export default function ShareModal({ isOpen, onClose, folderId }) {
       setOwnerId(res.data.owner_id);
       setIsPublic(res.data.is_public || false);
     } catch (err) {
+      console.error(err);
       toast.error('Failed to load folder access');
     } finally {
       setIsLoading(false);
@@ -58,6 +53,7 @@ export default function ShareModal({ isOpen, onClose, folderId }) {
       setIsPublic(newStatus);
       toast.success(newStatus ? 'Folder is now public' : 'Folder is now private');
     } catch (err) {
+      console.error(err);
       toast.error('Failed to update public status');
     } finally {
       setIsUpdating(false);
