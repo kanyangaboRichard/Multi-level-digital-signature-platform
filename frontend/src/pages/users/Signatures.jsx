@@ -2,21 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAsyncLock } from "../../hooks/useAsyncLock";
 import api from "../../lib/api";
 import toast from "react-hot-toast";
-import {
-  PenTool,
-  Upload,
-  Lock,
-  ShieldCheck,
-  Trash2,
-  CheckCircle2,
-  AlertTriangle,
-  Loader2,
-  KeyRound,
-  RotateCcw,
-  Sparkles,
-  FileSignature,
-  Eraser,
-} from "lucide-react";
+import {PenTool,Upload,Lock,ShieldCheck,Trash2,CheckCircle2,AlertTriangle,Loader2,KeyRound,RotateCcw,Sparkles,Eraser,} from "lucide-react";
 import ReactCrop from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import SignatureCanvas from "react-signature-canvas";
