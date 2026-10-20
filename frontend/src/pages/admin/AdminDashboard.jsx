@@ -3,13 +3,20 @@ import { useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import Select from 'react-select';
-import { Users, ShieldCheck, Plus, MoreVertical, Loader2, X, Mail, User as UserIcon, UploadCloud, FileText, Ban, CheckCircle2 } from 'lucide-react';
+import { Users, ShieldCheck, Plus, MoreVertical, Loader2, X, Mail, User as UserIcon, UploadCloud, FileText, Ban, CheckCircle2, Send } from 'lucide-react';
 
 const STATUS_META = {
   active: { label: 'Active', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
   invited: { label: 'Invited', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' },
+  expired: { label: 'Invite expired', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' },
   deactivated: { label: 'Deactivated', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' },
 };
+
+// An invited user whose invitation has passed its expiry is shown as "expired"
+const isInviteExpired = (u) =>
+  u.status === 'invited' && !!u.inviteExpiresAt && new Date(u.inviteExpiresAt) < new Date();
+
+const getDisplayStatus = (u) => (isInviteExpired(u) ? 'expired' : u.status);
 
 function StatusPill({ status }) {
   const meta = STATUS_META[status] || STATUS_META.active;
@@ -115,7 +122,7 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
   const toggleMenu = () => {
     if (!isMenuOpen && buttonRef.current) {
       const spaceBelow = window.innerHeight - buttonRef.current.getBoundingClientRect().bottom;
-      setOpenUpward(spaceBelow < 200);
+      setOpenUpward(spaceBelow < 240);
     }
     setIsMenuOpen((prev) => !prev);
   };
@@ -167,7 +174,37 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
     setShowDeactivateModal(true);
   };
 
-  const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const handleResendInvite = async () => {
+    setIsMenuOpen(false);
+    setIsProcessing(true);
+    try {
+      await api.post(`/api/admin/users/${targetUser.id}/resend-invite`);
+      toast.success(`A new invitation was sent to ${targetUser.email}.`);
+      onActionComplete();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to resend invitation.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Resend is only usable while the invite is unaccepted AND expired.
+  // Once the user has accepted (status no longer 'invited'), it is disabled.
+  const inviteExpired = isInviteExpired(targetUser);
+  const isPendingInvite = targetUser.status === 'invited';
+  let resendLabel = 'Resend invitation';
+  let resendTitle;
+  if (!isPendingInvite) {
+    resendLabel = 'Invitation accepted';
+    resendTitle = 'This user has already accepted their invitation.';
+  } else if (!inviteExpired) {
+    resendLabel = 'Invitation pending';
+    resendTitle = targetUser.inviteExpiresAt
+      ? `The current invitation is still valid until ${new Date(targetUser.inviteExpiresAt).toLocaleString()}.`
+      : 'The current invitation is still valid.';
+  }
+
+  const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
   const dangerMenuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
   const items = [
@@ -183,6 +220,16 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
       icon: targetUser.status === 'deactivated' ? CheckCircle2 : Ban,
       onClick: handleToggleActive,
       danger: targetUser.status !== 'deactivated',
+    },
+    {
+      // Always shown last; only clickable for an unaccepted, expired invite.
+      // Once the user is active (invite accepted) it stays disabled.
+      key: 'resend',
+      label: resendLabel,
+      icon: Send,
+      onClick: handleResendInvite,
+      disabled: !inviteExpired,
+      title: resendTitle,
     },
   ];
 
@@ -200,12 +247,13 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
         </button>
 
         {isMenuOpen && !isSelf && (
-          <div className={`absolute right-0 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-30 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+          <div className={`absolute right-0 w-52 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-30 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
             {items.map((item) => (
               <button
                 key={item.key}
                 className={item.danger ? dangerMenuItemCls : menuItemCls}
-                disabled={isProcessing}
+                disabled={isProcessing || item.disabled}
+                title={item.title}
                 onClick={item.onClick}
               >
                 <item.icon className={`h-4 w-4 ${item.danger ? 'text-red-400' : 'text-slate-400'}`} />
@@ -469,12 +517,13 @@ export default function AdminDashboard() {
     const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || getDisplayStatus(u) === statusFilter;
     return matchesSearch && matchesRole && matchesStatus;
   });
 
   const activeCount = users.filter((u) => u.status === 'active').length;
   const adminCount = users.filter((u) => u.role === 'admin').length;
+  const expiredCount = users.filter(isInviteExpired).length;
 
   const handleInvited = () => {
     setShowInviteModal(false);
@@ -504,7 +553,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-8 px-2 sm:px-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-8 px-2 sm:px-0">
           <StatCard
             icon={Users}
             value={users.length}
@@ -525,6 +574,13 @@ export default function AdminDashboard() {
             label="Admins"
             onClick={() => { setRoleFilter('admin'); setStatusFilter('all'); }}
             isActive={roleFilter === 'admin'}
+          />
+          <StatCard
+            icon={Send}
+            value={expiredCount}
+            label="Expired invites"
+            onClick={() => { setStatusFilter('expired'); setRoleFilter('all'); }}
+            isActive={statusFilter === 'expired'}
           />
         </div>
 
@@ -595,7 +651,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="sm:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
                           <RoleBadge role={u.role} />
-                          <StatusPill status={u.status} />
+                          <StatusPill status={getDisplayStatus(u)} />
                         </div>
                       </td>
                       <td className="hidden sm:table-cell px-5 py-3 min-w-0">
@@ -605,7 +661,7 @@ export default function AdminDashboard() {
                         <RoleBadge role={u.role} />
                       </td>
                       <td className="hidden sm:table-cell px-5 py-3">
-                        <StatusPill status={u.status} />
+                        <StatusPill status={getDisplayStatus(u)} />
                       </td>
                       <td className="px-2 sm:px-5 py-3 text-right align-top sm:align-middle">
                         <UserActionsMenu user={u} currentUserId={user?.id} onActionComplete={fetchUsers} />
