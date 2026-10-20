@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate,useOutletContext, Navigate  } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PieChart, Pie, Cell, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import api from '../../lib/api';
@@ -11,6 +11,8 @@ const STATUS_COLORS = {
   completed: '#10b981',
   voidedRejected: '#ef4444',
 };
+
+const ADMIN_HOME = '/admin';
 
 const STATUS_LABELS = {
   awaitingSignature: 'Awaiting signature',
@@ -34,10 +36,13 @@ const StatCard = ({ value, label }) => (
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useOutletContext() || {};
+  const isAdmin = user?.role === 'admin';
   const [isLoading, setIsLoading] = useState(true);
   const [data, setData] = useState(null);
 
   useEffect(() => {
+    if (isAdmin) return;
     const fetchSummary = async () => {
       try {
         const res = await api.get('/api/documents/dashboard-summary');
@@ -49,7 +54,11 @@ export default function Dashboard() {
       }
     };
     fetchSummary();
-  }, []);
+  }, [isAdmin]);
+
+  if (isAdmin) {
+    return <Navigate to={ADMIN_HOME} replace />;
+  }
 
   if (isLoading || !data) {
     return (
